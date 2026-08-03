@@ -9,6 +9,11 @@ interface CreateUserBody {
   password: string;
 }
 
+interface AuthenticateUserBody {
+  username: string;
+  password: string;
+}
+
 interface StoredUser {
   username: string;
   passwordHash: string;
@@ -76,9 +81,69 @@ const createUserSchema = {
     }
 } as const;
 
+const authenticateUserSchema = {
+  body: {
+    type: "object",
+    required: ["username", "password"],
+    additionalProperties: false,
+
+    properties: {
+      username: {
+        type: "string",
+        minLength: 3,
+        maxLength: 18,
+        pattern: "^[a-zA-Z0-9._-]+$"
+      },
+
+      password: {
+        type: "string",
+        minLength: 1,
+        maxLength: 128
+      }
+    }
+  },
+
+  response: {
+    200: {
+      type: "object",
+      required: ["authenticated"],
+      additionalProperties: false,
+
+      properties: {
+        authenticated: {
+          type: "boolean"
+        }
+      }
+    },
+
+    401: {
+      type: "object",
+      required: ["error"],
+      additionalProperties: false,
+
+      properties: {
+        error: {
+          type: "string"
+        }
+      }
+    }
+  }
+} as const;
+
 export async function userRoutes(
   app: FastifyInstance
 ): Promise<void> {
+
+    //to prevent timing attacks, we will always perform a password hash operation
+    //even if the user does not exist
+    //This is a dummy hash that will be used in such cases
+    const dummyPasswordHash = await argon2.hash(
+        "authentication-timing-placeholder",
+        {
+            type: argon2.argon2id
+        }
+    );
+
   app.post<{ Body: CreateUserBody }>(
     "/users",
     {
@@ -130,4 +195,40 @@ export async function userRoutes(
       });
     }
   );
+
+  app.post<{ Body: AuthenticateUserBody }>(
+    "/authenticate",
+        {
+            schema: authenticateUserSchema
+        },
+        async (request, reply) => {
+            const username = request.body.username.toLowerCase();
+            const password = request.body.password;
+
+            const redisKey = `user:${username}`;
+            const storedValue = await redisClient.get(redisKey);
+
+            let passwordHash = dummyPasswordHash;
+
+            if (storedValue !== null) {
+            const storedUser = JSON.parse(storedValue) as StoredUser;
+            passwordHash = storedUser.passwordHash;
+            }
+
+            const passwordMatches = await argon2.verify(
+            passwordHash,
+            password
+            );
+
+            if (storedValue === null || !passwordMatches) {
+            return reply.code(401).send({
+                error: "Invalid username or password."
+            });
+            }
+
+            return reply.code(200).send({
+            authenticated: true
+            });
+        }
+    );
 }

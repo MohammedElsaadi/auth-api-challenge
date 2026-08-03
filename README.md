@@ -108,6 +108,57 @@ Invoke-RestMethod `
     "error": "Username already exists." 
 }
 ```
+### Authenticate User
+
+Send a `POST` request to `/authenticate` using the username and password of an existing user.
+
+Usernames are treated as case-insensitive during authentication.
+
+#### curl
+
+```bash
+curl -X POST http://127.0.0.1:3000/authenticate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "example-user",
+    "password": "example password ipsum lorem"
+  }'
+```
+
+#### Windows PowerShell
+```ps
+$body = @{
+    username = "example-user"
+    password = "example password ipsum lorem"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+    -Method Post `
+    -Uri http://127.0.0.1:3000/authenticate `
+    -ContentType "application/json" `
+    -Body $body
+```
+
+#### Successful Response
+`200 OK`
+
+```JSON
+{
+  "authenticated": true
+}
+```
+
+#### Invalid Credentials
+`401 Unauthorized`
+
+```JSON
+{
+  "error": "Invalid username or password."
+}
+```
+
+The submitted password is verified against the stored Argon2id hash using argon2.verify(). The original password is never retrieved from Redis.
+
 
 ### Stopping the Application
 
