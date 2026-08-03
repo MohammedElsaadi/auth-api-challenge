@@ -6,8 +6,17 @@ import {
   redisClient
 } from "./redis.js";
 
+import { userRoutes } from "./routes/users.js";
+
 const app = Fastify({
-  logger: true
+  logger: true,
+
+  ajv: {
+    customOptions: {
+      coerceTypes: false,
+      removeAdditional: false
+    }
+  }
 });
 
 app.get("/health", async () => {
@@ -18,6 +27,8 @@ app.get("/health", async () => {
     redis: redisResponse
   };
 });
+
+app.register(userRoutes);
 
 app.addHook("onClose", async () => {
   await disconnectRedis();
