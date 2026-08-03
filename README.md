@@ -1,10 +1,12 @@
 # Auth API Challenge
 
 ## Table of Contents
+
 1. [Getting Started](#getting-started)
-2. [Design Decisions](#design-decisions)
-3. [Future Development](#future-development)
-4. [Approaching this challenge](#approaching-this-challenge)
+2. [Automated Testing](#automated-testing)
+3. [Design Decisions](#design-decisions)
+4. [Future Development](#future-development)
+5. [Approaching This Challenge](#approaching-this-challenge)
 
 ## Getting Started
 
@@ -37,7 +39,7 @@ cp .env.example .env
 npm install
 
 # Start Redis in Docker, but only after Docker Desktop is running
-Docker compose up -d
+docker compose up -d
 
 # Launch the API
 npm run dev
@@ -91,6 +93,17 @@ Invoke-RestMethod `
     -Uri http://127.0.0.1:3000/users `
     -ContentType "application/json" `
     -Body $body
+    	$body = @{
+    username = "example-user3"
+    password = "example password ipsum lorem"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+    -Method Post `
+    -Uri http://127.0.0.1:3000/authenticate `
+    -ContentType "application/json" `
+    -Body $body
+	
 ```
 
 #### Successful Response:
@@ -137,6 +150,17 @@ Invoke-RestMethod `
     -Uri http://127.0.0.1:3000/authenticate `
     -ContentType "application/json" `
     -Body $body
+    	$body = @{
+    username = "example-user3"
+    password = "example password ipsum lorem"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+    -Method Post `
+    -Uri http://127.0.0.1:3000/authenticate `
+    -ContentType "application/json" `
+    -Body $body
+	
 ```
 
 #### Successful Response
@@ -159,6 +183,30 @@ Invoke-RestMethod `
 
 The submitted password is verified against the stored Argon2id hash using argon2.verify(). The original password is never retrieved from Redis.
 
+### Run Automated Tests
+Redis must be running before the integration tests are run:
+
+```ps
+docker compose up -d
+npm test
+```
+This test suite deletes just the Redis keys that were create specifically for testing. It does not clear the entire Redis database.
+
+### Run Test Coverage:
+The automated suite currently achieves 98.61% line coverage, 88.89% branch coverage, and 92.31% function coverage. The remaining uncovered code consists primarily of defensive Redis configuration and connection-lifecycle paths.
+
+Run TypeScript compiler without generating output:
+```ps
+npm run typecheck
+```
+
+Run the test suite with Node.js coverage reporting to measure how much of the code the tests execute:
+```ps
+npm run test:coverage
+```
+
+
+
 
 ### Stopping the Application
 
@@ -167,6 +215,61 @@ Use the `Ctrl + C` command
 
 #### Stop the Redis Container:
 Run `docker compose down`
+
+## Automated Testing
+The project uses Node.js's built-in test runner and Fastify's `inject()` method.
+
+`Fastify.inject()` sends simulated HTTP requests directly through the Fastify application without opening a network port. This allows the request validation, route handlers, response schemas, password hashing, and Redis operations to be tested together.
+
+The tests are divided into two categories:
+
+### Unit Tests
+The password-policy tests check the validation logic independently of Fastify and Redis.
+
+They confirm that the policy:
+- accepts valid long passwords
+- rejects passwords in the block list
+- performs block list comparisons without case sensitivity
+- rejects passwords equal to the username
+- rejects passwords containing the usernames of five or more characters in length
+- does not apply the containing the username rule when a username is shorter than five characters
+
+### API and Redis Integration Tests
+
+The endpoint tests use a real Redis container and Fastify's request injection.
+These tests verify:
+- The health endpoint receives `PONG` from Redis
+- a valid user can be created
+- passwords are stored as Argon2id hashes rather than plaintext
+- passwords and password hashes do not get returned by the API
+- duplicate usernames return a conflict response
+- usernames are treated as case-insensitive
+- two simultaneous requests cannot create the same username
+- invalid usernames and passwords are rejected by the request schemas
+- unexpected request properties are rejected
+- valid credentials authenticate successfully
+- authentication usernames are case-insensitive
+- incorrect passwords return a `401` response
+- unknown usernames return the same `401` response
+- missing authentication fields return `400`
+- usernames or passwords supplied as numbers are rejected rather than converted into strings
+- unexpected request properties are rejected
+- malformed JSON returns a JSON error response with `400`
+- valid credentials authenticate successfully
+- Incorrect passwords return `401`
+- Unknown usernames return `401`
+- Incorrect password and unknown username attempts return identical status codes and response body
+
+The tests run sequentially because they hare the same Redis instance and test keys:
+```json
+"test": "node --import=tsx --test --test-concurrency=1 \"test/**/*.test.ts\""
+```
+
+### Test Isolation
+Before each integration test, the application removes the Redis keys associated with its test case users. The same test keys are removed again after the suite is completed.
+
+This makes the tests repeatable and prevents one test from affecting the result of another one.
+
 
 ## Design Decisions
 
@@ -178,12 +281,12 @@ Usernames have to meet the following requirements:
 - treated as case-insensitive
 
 The username is treated as case-insensitive and is set to lowercase before being used as the Redis key. 
-`user:<lowercase-username>
+`user:<lowercase-username>`
 Example: Mohammed is stored as user:mohammed.
 
 The min length of 3 characters prevents extremely short usernames but still supports names.
 
-The max length of 18 characters is a design choice to keep usernames concise and readable. This could be increased if needed but I chose it arbitrarily. My full name as a username could be Mohammed_Elsaadi which is 16 characters. 18 Would allow a middle initial to be included.
+The limit of 18 characters is a design choice and is not a Redis specific limitation. It could be increased if product requirements need.
 
 I restricted the characters of the username to not allow spaces or colons to avoid ambiguous usernames that would otherwise blend in as multiple phrases in a sentence. Also it would help differentiate from the Redis key namespace such as `user:mohammed`.
 
@@ -209,16 +312,36 @@ However people tend to still follow predictable trends, so I added a block list 
 
 I also added a safeguard to block passwords that are equal to, or contain the username if it is 5+ characters long. This prevents the cases where a small username like 'sam' is small enough to be part of many words in the password. 
 
+### Authentication
+Authentication retrieves the stored user record from Redis using the lowercase username:
+`user:<lowercase-username>`
+
+If the user exists, the submitted password is verified against the stored Argon2id hash using argon2.verify().
+
+The API returns the same response whether it is for unknown username or incorrect password:
+```JSON
+{
+  "error": "Invalid username or password."
+}
+```
+
+Returning different messages such as "username does not exist" and "incorrect password" would allow the attacker to determine which usernames are registered as an unknown username would typically be faster since it is one single check. So a dummy hash is used to do a dummy password comparison so that processing time allows for a similar response time.
+
+
+
+
 ## Future Development
 Topics that I would tackle in the future to enhance the security of this API.
 
-- ### HaveIBeenPwned Password Blocklist
-    [This API](https://haveibeenpwned.com/Passwords) can return the list passwords that suffix the 5 character prefix of the proposed password's SHA-1 hash. From there the server can check the list for the full SHA-1 value to check if the password exists in the 'pwned' database. If it exists then it should block the password from being created. SHA-1 would only be used for the lookup, but Argon2id is still the hash algorithm for storage.
+### HaveIBeenPwned Password Blocklist
+[This API](https://haveibeenpwned.com/Passwords) can return the list passwords that suffix the 5 character prefix of the proposed password's SHA-1 hash. From there the server can check the list for the full SHA-1 value to check if the password exists in the 'pwned' database. If it exists then it should block the password from being created. SHA-1 would only be used for the lookup, but Argon2id is still the hash algorithm for storage.
 
-- ### Rate Limiting for creation / authentication endpoints
-- ### Avoiding passwords and password hashes in logs
-- ### Request body size limits
-- ### 
+### Additional Security Improvements
+- Rate Limiting for creation / authentication endpoints
+- Avoiding passwords and password hashes in logs
+- Request body size limits
+- Add log safeguards for passwords and password hashes
+- Require TLS for production deployments
 
 ## Approaching This Challenge
 ### Introduction
@@ -246,7 +369,7 @@ Redis was less familiar to me than relational databases. I had looked into it be
 
 I used ChatGPT as a research tool to quickly understand relevant concepts such as Redis hosting for Docker, connecting with Node.js clients, read/write commands, and existence checks. I verified with online Redis documentation as well.
 
-I learned that the write command has a flag NX which returns OK (did not exist) or NULL (exists). I can have the Node API return 200 or 409 based on Redis returning OK/NULL.
+I learned that the SET command has a flag NX which only writes the value and returns OK (did not exist) or NULL (exists). I can have the Node API return 200 or 409 based on Redis returning OK/NULL.
 
 Asking why to use NX instead of checking EXISTS first confirmed what I expected, Using SET with the NX flag avoids the race condition that could occur if existence check and set action were performed as separate operations.
 
@@ -260,7 +383,7 @@ Having worked with credential storage previously, I know passwords should never 
 
 I plan to enforce min and max character limits, and allow special characters for complexity. I also will create a block list of common passwords like password123!
 
-For the password storage I will use Argon2id over bcrypt as it is the best rated password hashing algorithm by OWASP.
+For the password storage I will use Argon2id over bcrypt as it is the recpmmended password hashing algorithm by OWASP.
 
 #### Framework Decision
 
@@ -276,7 +399,7 @@ I researched and compared frameworks for Node.js and landed on Fastify as it pro
 - TLS required for production
 
 #### Initial Test Plan
-I plan to test:
+I planned to test:
 - Successful user creation
 - Unique username check
 - Case sensitivity for username check

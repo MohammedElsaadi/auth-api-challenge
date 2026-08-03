@@ -43,7 +43,7 @@ const createUserSchema = {
   },
 
     response: {
-    201: {
+    200: {
         type: "object",
         required: ["username", "createdAt"],
         additionalProperties: false,
@@ -189,7 +189,7 @@ export async function userRoutes(
         });
       }
 
-      return reply.code(201).send({
+      return reply.code(200).send({
         username,
         createdAt
       });

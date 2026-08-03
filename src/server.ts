@@ -1,34 +1,10 @@
-import Fastify from "fastify";
-
+import { buildApp } from "./app.js";
 import {
   connectRedis,
-  disconnectRedis,
-  redisClient
+  disconnectRedis
 } from "./redis.js";
 
-import { userRoutes } from "./routes/users.js";
-
-const app = Fastify({
-  logger: true,
-
-  ajv: {
-    customOptions: {
-      coerceTypes: false,
-      removeAdditional: false
-    }
-  }
-});
-
-app.get("/health", async () => {
-  const redisResponse = await redisClient.ping();
-
-  return {
-    status: "ok",
-    redis: redisResponse
-  };
-});
-
-app.register(userRoutes);
+const app = buildApp();
 
 app.addHook("onClose", async () => {
   await disconnectRedis();
