@@ -1,7 +1,11 @@
 # Auth API Challenge
 
 ## Table of Contents
-1. [Approaching this challenge](#approaching-this-challenge)
+1. [Getting Started](#getting-started)
+2. [Approaching this challenge](#approaching-this-challenge)
+
+## Getting Started
+Copy .env.example to .env and enter a password
 
 ## Approaching This Challenge
 ### Introduction
