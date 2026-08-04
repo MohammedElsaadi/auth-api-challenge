@@ -71,14 +71,14 @@ Expected Response:
 ### Create User
 Send a `POST` request to `/users` with valid username and password:
 
-#### curl
+#### curl - macOS/Linux
 ```Bash
-curl -X POST http://127.0.0.1:3000/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "example-user",
-    "password": "example password ipsum lorem"
-  }'
+curl -X POST http://127.0.0.1:3000/users -H "Content-Type: application/json" -d '{"username": "example-user", "password": "example password ipsum lorem"}'
+```
+
+#### curl - Windows Command Prompt
+```cmd
+curl -X POST http://127.0.0.1:3000/users -H "Content-Type: application/json" -d "{\"username\":\"example-user\",\"password\":\"example password ipsum lorem\"}"
 ```
 
 #### Windows PowerShell
@@ -127,15 +127,16 @@ Send a `POST` request to `/authenticate` using the username and password of an e
 
 Usernames are treated as case-insensitive during authentication.
 
-#### curl
+#### curl - macOS/Linux
 
 ```bash
-curl -X POST http://127.0.0.1:3000/authenticate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "example-user",
-    "password": "example password ipsum lorem"
-  }'
+curl -X POST http://127.0.0.1:3000/authenticate -H "Content-Type: application/json" -d '{"username": "example-user", "password": "example password ipsum lorem"}'
+```
+
+#### curl - Windows Command Prompt
+
+```cmd
+curl -X POST http://127.0.0.1:3000/authenticate -H "Content-Type: application/json" -d "{\"username\":\"example-user\",\"password\":\"example password ipsum lorem\"}"
 ```
 
 #### Windows PowerShell
